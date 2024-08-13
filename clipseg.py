@@ -21,7 +21,6 @@ warnings.filterwarnings("ignore", category=UserWarning, module="torch")
 warnings.filterwarnings("ignore", category=UserWarning, module="safetensors")
 
 
-
 """Helper methods for CLIPSeg nodes"""
 
 def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
@@ -55,12 +54,11 @@ def dilate_mask(mask: torch.Tensor, dilation_factor: float) -> torch.Tensor:
     return torch.from_numpy(mask_dilated)
 
 
-
 class CLIPSeg:
 
     def __init__(self):
         pass
-    
+
     @classmethod
     def INPUT_TYPES(s):
         """
@@ -109,27 +107,31 @@ class CLIPSeg:
         Returns:
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: The segmentation mask, the heatmap mask, and the binarized mask.
         """
-            
+
         # Convert the Tensor to a PIL image
-        image_np = image.numpy().squeeze()  # Remove the first dimension (batch size of 1)
-        # Convert the numpy array back to the original range (0-255) and data type (uint8)
-        image_np = (image_np * 255).astype(np.uint8)
+        # image_np = image.numpy().squeeze()  # Remove the first dimension (batch size of 1)
+        image_np = tensor_to_numpy(image)
+        # # Convert the numpy array back to the original range (0-255) and data type (uint8)
+        # image_np = (image_np * 255).astype(np.uint8)
         # Create a PIL image from the numpy array
         i = Image.fromarray(image_np, mode="RGB")
 
         processor = CLIPSegProcessor.from_pretrained("CIDAS/clipseg-rd64-refined")
         model = CLIPSegForImageSegmentation.from_pretrained("CIDAS/clipseg-rd64-refined")
-        
+
         prompt = text
-        
-        input_prc = processor(text=prompt, images=i, padding="max_length", return_tensors="pt")
-        
+
+        # input_prc = processor(text=prompt, images=i, padding="max_length", return_tensors="pt")
+        input_prc = processor(text=prompt, images=[i], return_tensors="pt")
+
         # Predict the segemntation mask
         with torch.no_grad():
             outputs = model(**input_prc)
-        
-        tensor = torch.sigmoid(outputs[0]) # get the mask
-        
+
+        # tensor = torch.sigmoid(outputs[0]) # get the mask
+        preds = outputs.logits.unsqueeze(1)
+        tensor = torch.sigmoid(preds[0][0]) # get the mask
+
         # Apply a threshold to the original tensor to cut off low values
         thresh = threshold
         tensor_thresholded = torch.where(tensor > thresh, tensor, torch.tensor(0, dtype=torch.float))
@@ -173,7 +175,7 @@ class CLIPSeg:
 
         return tensor_bw, image_out_heatmap, image_out_binary
 
-    #OUTPUT_NODE = False
+    # OUTPUT_NODE = False
 
 class CombineMasks:
     def __init__(self):
